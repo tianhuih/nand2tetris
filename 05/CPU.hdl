@@ -14,7 +14,7 @@
  * memory location addressed by A, i.e. to Memory[A]. The inM input 
  * holds the value of this location. If the current instruction needs 
  * to write a value to M, the value is placed in outM, the address 
- * of the target location is placed in the addressM output, and the 
+ * of the target location is placed in the addressM output, and  the 
  * writeM control bit is asserted. (When writeM==0, any value may 
  * appear in outM). The outM and writeM outputs are combinational: 
  * they are affected instantaneously by the execution of the current 
@@ -24,6 +24,10 @@
  * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
  * than to the address resulting from executing the current instruction. 
  */
+
+// instruction 
+//      0vvvvvvvvvvvvvvv        load the 15-bit address to A 
+//      111accccccdddjjj        compute the instruction 
 
 CHIP CPU {
 
@@ -39,5 +43,38 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    // choose A-instruction or C-instruction
+    DMux(in=true,sel=instruction[15],a=aload,b=cload);
+    
+    // C-instruction: find destination 
+    And(a=instruction[3],b=cload,out=destM,out=writeM);
+    And(a=instruction[4],b=cload,out=destD);
+    And(a=instruction[5],b=cload,out=destA1);
+    Or(a=destA1,b=aload,out=destA);
+
+    // for C-instruction: get x and y value, store output into destination
+    // for A-instruction: store address into A register 
+    DRegister(in=output,load=destD,out=xval);
+    Mux16(a=output,b=instruction,sel=aload,out=inputA);
+    ARegister(in=inputA,load=destA,out=outA,out[0..14]=addressM);
+    Mux16(a=outA,b=inM,sel=instruction[12],out=yval);
+
+    // C-intsruction: computation  
+    ALU(x=xval,y=yval,zx=instruction[11],nx=instruction[10],zy=instruction[9],ny=instruction[8],
+                f=instruction[7],no=instruction[6],out=output,out=outM,zr=isZero,ng=isNeg);
+    
+    // C-instruction: jumps
+    And(a=instruction[0],b=cload,out=jumpGT);
+    And(a=instruction[1],b=cload,out=jumpEQ);
+    And(a=instruction[2],b=cload,out=jumpLT);
+    Not(in=isZero,out=notZero);
+    Not(in=isNeg,out=notNeg);
+    And(a=notNeg,b=notZero,out=isPos);
+    And(a=jumpGT,b=isPos,out=canJumpGT); 
+    And(a=jumpEQ,b=isZero,out=canJumpEQ);
+    And(a=jumpLT,b=isNeg,out=canJumpLT);
+    Or8Way(in[0]=canJumpGT,in[1]=canJumpEQ,in[2]=canJumpLT,in[3..7]=false,out=jump);
+    
+    // program counter: find next instruction 
+    PC(in=outA,inc=true,load=jump,reset=reset,out[0..14]=pc);
 }
